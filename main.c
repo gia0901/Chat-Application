@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <errno.h>
 
 /********************* MACROS *****************************/
@@ -492,7 +493,13 @@ void showHelp(void)
 
 void showIP(void)
 {
-    printf("\nIP Address of this app: %s\n", this_device.addr_in_str);
+    char ip_address[16];
+
+    FILE *fp = popen("hostname -I", "r");
+
+    fscanf(fp, "%s", ip_address);
+
+    printf("\nIP Address of this app: %s\n", ip_address);
 }
 
 void showPort(void)
