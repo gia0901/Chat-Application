@@ -11,6 +11,7 @@
 #define MAX_CONNECTIONS 2
 #define MAX_BACKLOG     MAX_CONNECTIONS
 #define MAX_MSG_SIZE    100
+#define TERMINATE_CODE  "0x59"
 
 /********************* STRUCTURES *******************/
 typedef struct
@@ -105,7 +106,6 @@ int main (int argc, char *argv[])
 
     sleep(2);
 
-    int result;
     int ret_val;
     char temp_cmd[20];
     char temp_addr[16];
@@ -118,13 +118,13 @@ int main (int argc, char *argv[])
         printf("\nEnter your command: ");
         fgets(user_cmd, 50, stdin);
 
-        /* Analysis the command */
-        result = sscanf(user_cmd, "%s", temp_cmd);
+        /* Analyze the command */
+        ret_val = sscanf(user_cmd, "%s", temp_cmd);
 
         if (!strcmp(temp_cmd, "connect"))
         {
             // Connect to a Peer 
-            if (total_devices > MAX_CONNECTIONS)
+            if (total_devices >= MAX_CONNECTIONS)
             {
                 printf("No more rooms for a new connection. Please close a current one.\n");
             }
@@ -165,7 +165,7 @@ int main (int argc, char *argv[])
                 }
                 else if(ret_val == -1)
                 {
-                    printf("\nPort number is not available. Try again.\n");
+                    printf("\nAddress or Port number is not available. Try again.\n");
                 }             
 
                 pthread_mutex_unlock(&peer_mutex);
@@ -191,11 +191,11 @@ int main (int argc, char *argv[])
 
             if (ret_val == 0)
             {      
-                printf("Sent message successfully.\n");
+                printf("\nSent message successfully.\n");
             }
             else if (ret_val == -1)
             {
-                printf("No peer is available for sending.\n");
+                printf("\nNo peer is available for sending.\n");
             }
         }
         else if (!strcmp(temp_cmd, "terminate"))
@@ -213,11 +213,11 @@ int main (int argc, char *argv[])
             
             if (ret_val == 0)
             { 
-                printf("Terminate peer with ID %d successfully.\n", peer_id);
+                printf("\nTerminate peer with ID %d successfully.\n", peer_id);
             }
             else if(ret_val == -1)
             {
-                printf("No peer is available for terminating.\n");
+                printf("\nNo peer is available for terminating.\n");
             }
 
         }
@@ -248,7 +248,7 @@ int main (int argc, char *argv[])
         }
         else
         {
-            printf("Invalid command. Try again\n");
+            printf("\nInvalid command. Try again\n");
         } 
     }
 
@@ -296,7 +296,7 @@ void *acceptConnections(void *args)
         total_devices++;
         pthread_mutex_unlock(&peer_mutex);
 
-        printf("\nAccepted a new connection from adddress: %s in port: %d\nEnter your command: ", addr_in_str, print_port);
+        printf("\nAccepted a new connection from adddress: %s, setup at port: %d\n", addr_in_str, print_port);
     }
 }
 
@@ -348,19 +348,6 @@ int sendToPeer(int peer_id, char *mesg)
     return -1;
 }
 
-void listPeer(void)
-{
-    printf("\n********************************************\n");
-    printf("ID |        IP Address         | Port No.\n");
-    for (int i = 0; i < MAX_CONNECTIONS; i++)
-    {
-        if (peer_device[i].port_no != 0)
-        {
-            printf("%d  |     %s       | %d\n", peer_device[i].id, peer_device[i].addr_in_str, peer_device[i].port_no);
-        }
-    }
-    printf("********************************************\n");
-}
 
 void *receiveFromPeer(void *args)
 {
@@ -376,27 +363,37 @@ void *receiveFromPeer(void *args)
         if (read_bytes <= 0)
         {
             // An error happened - or a peer has closed a connection.
-            printf("\nAn error happened. Close socket at port: %d.\n", peer_device->port_no);
+            printf("\nA peer has left the your chat.\n");
 
             pthread_mutex_lock(&peer_mutex);
 
-            close(peer_device->socket_fd);
-            peer_device->socket_fd = -1;
+            // close(peer_device->socket_fd);
+            // peer_device->socket_fd = -1;
+            // printf("\nID: %d\n", peer_device->id);
+            updatePeerList(peer_device->id);
 
-            updatePeerList();
+            //terminatePeer(peer_device->id);
 
             pthread_mutex_unlock(&peer_mutex);
-
             
-            printf("\nEnter your command: ");
             break;
         }
+        if (!strcmp(recv_buffer, TERMINATE_CODE))   // Check did the buffer receive the Close request
+        {
+            close(peer_device->socket_fd);
+            printf("\nThe peer at port %d has disconnected.\n", peer_device->port_no);
+            updatePeerList(peer_device->id);
+            break;
+        }
+
         printf("\n********************************************\n");
         printf("* Message received from: %s\n", peer_device->addr_in_str);
         printf("* Sender's port: %d\n", peer_device->port_no);
         printf("* Message: %s", recv_buffer);
         printf("********************************************\n");
         printf("\nEnter your command: ");
+
+        memset(recv_buffer, 0, sizeof(recv_buffer));
     }
 
     pthread_exit(NULL);
@@ -408,33 +405,73 @@ int terminatePeer(int peer_id)
 {
     int i;
     
-    for (i = 0; i < MAX_CONNECTIONS; i++)
+    for(i = 0; i < total_devices; i++)
     {
-        if (peer_device[i].id == peer_id)
+        if ((peer_device[i].id == peer_id) && (peer_device[i].port_no != 0))
         {
 
+            //peer_device[peer_id].socket_fd = -99;
+
+            // Np need to close socket here, the receiveFromPeer thread will handle it if the connection is failed.
+            sendToPeer(peer_id, TERMINATE_CODE);
+
+            //close(peer_device[peer_id].socket_fd);    // => receiveFromPeer thread will close
+
+            //memset(&peer_device[i], 0, sizeof(peer_device[i]));
+            //updatePeerList(peer_id);
+
+            return 0;
         }
     }
 
     return -1;
 }
 
-void updatePeerList()
+void updatePeerList(int peer_id)
 {
-
+    int i;
+    if (total_devices > 1)
+    {
+        for (i = peer_id; i < total_devices - 1; i++)
+        {
+            peer_device[i] = peer_device[i + 1];
+            peer_device[i].id -= 1;
+            printf("ID: %d\n", peer_device[i].id);
+        }
+    }
+    else if (total_devices == 1)
+    {
+        memset(&peer_device[0], 0, sizeof(peer_device[0]));
+    }
+    total_devices--;
 }
 
 void exitApp()
 {
-    for (int i = 0; i < MAX_CONNECTIONS; i++)
+    for (int i = 0; i < total_devices; i++)
     {
-        close(peer_device[i].socket_fd);
         if (peer_device[i].port_no != 0)
-        {
-            
+        {  
+           //close(peer_device[i].socket_fd);
+           terminatePeer(i);
         }
     }
     close(this_device.socket_fd);
+    exit(EXIT_SUCCESS);
+}
+
+void listPeer(void)
+{
+    printf("\n********************************************\n");
+    printf("ID |        IP Address         | Port No.\n");
+    for (int i = 0; i < total_devices; i++)
+    {
+        if (peer_device[i].port_no != 0)
+        {
+            printf("%d  |     %s       | %d\n", peer_device[i].id, peer_device[i].addr_in_str, peer_device[i].port_no);
+        }
+    }
+    printf("********************************************\n");
 }
 
 
