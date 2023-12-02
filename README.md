@@ -6,5 +6,5 @@
   
 # How to use this app:
 - Compile & delete it by using the makefile (compile: make; delete: make clean)
-- Execute the app:  ./chat <<port number>>
+- Execute the app:  ./chat port-number  (port-number is the port that you want this app will listen for)
 - Use the options to control the app.
