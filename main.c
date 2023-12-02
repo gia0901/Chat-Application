@@ -8,13 +8,18 @@
 #include <netdb.h>
 #include <errno.h>
 
-/********************* MACROS *****************************/
+/*****************************************************************
+ *                         MACROS
+ *****************************************************************/
 #define MAX_CONNECTIONS 2
 #define MAX_BACKLOG     MAX_CONNECTIONS
 #define MAX_MSG_SIZE    100
 #define TERMINATE_CODE  "0x59"
 
-/********************* STRUCTURES *******************/
+
+/*****************************************************************
+ *                         STRUCTURES
+ *****************************************************************/
 typedef struct
 {
     int id;
@@ -26,22 +31,24 @@ typedef struct
 } device_t;
 
 
-/********************* FUNCTION PROTOTYPES ****************/
+/*****************************************************************
+ *                         FUNCTION PROTOTYPES
+ *****************************************************************/
+void *acceptConnections(void *args);        /* Thread handler: accept new connection  */
+void *receiveFromPeer(void *args);          /* Thread handler: receive data from peer*/
+int connectToPeer(device_t *peer_device);   /* Connect to a new peer */
+int sendToPeer(int peer_id, char *mesg);    /* Send a message to a peer */
+int terminatePeer(int peer_id);             /* Terminate a peer */
+void listPeer(void);                        /* List all peers connected to this program */
+void updatePeerList(int peer_id);           /* Helper function: update  the peer list (after create/close a connection)*/
+void showHelp(void);                        /* Show user interface options*/
+void showIP(void);                          /* Show the computer IP address */
+void showPort(void);                        /* Show the port that this process is listening on */
+void exitApp(void);                         /* Close all the communications & terminate this process */
 
-void *acceptConnections(void *args);
-void *receiveFromPeer(void *args);
-int connectToPeer(device_t *peer_device);
-int sendToPeer(int peer_id, char *mesg);
-int terminatePeer(int peer_id);
-void listPeer(void);
-void updatePeerList();
-void showHelp(void);
-void showIP(void);
-void showPort(void);
-void exitApp(void);
-
-/********************* GLOBAL VARIABLES *******************/
-
+/*****************************************************************
+ *                         GLOBAL VARIABLES
+ *****************************************************************/
 device_t this_device = {0};
 device_t peer_device[MAX_CONNECTIONS] = {0};
 
@@ -52,9 +59,9 @@ pthread_t receiveThread[MAX_CONNECTIONS];
 pthread_mutex_t peer_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
-
-/********************* MAIN FUNCTION *******************/
-
+/*****************************************************************
+ *                         MAIN FUNCTION
+ *****************************************************************/
 int main (int argc, char *argv[])
 {
     char user_cmd[50];
@@ -63,7 +70,7 @@ int main (int argc, char *argv[])
     system("clear");
 
 
-    /**************** Initialize this device's socket *************/
+    /* Initialize this device's socket */
     if (argc < 2)
     {
         printf("Try command: ./chat <port_number>\n");
@@ -98,21 +105,21 @@ int main (int argc, char *argv[])
 
     printf("Application is listening on port: %d\n", this_device.port_no);
 
-    /* This thread will handle the passive task (accept new peer connections)*/
+    /* Create the thread that will handle the passive tasks (accept a new connection,...)*/
     if (pthread_create(&acceptThread, NULL, &acceptConnections, NULL) != 0)
     {
         perror("Error creating new thread");
         exit(EXIT_FAILURE);
     }
 
-    sleep(2);
+    sleep(1);
 
     int ret_val;
     char temp_cmd[20];
     char temp_addr[16];
     int temp_port_no;
 
-    /* This loop will handle the active task (execute user's command) */
+    /* This loop will handle the active tasks (execute user command) */
     while(1)
     {
         /* Get user command */
@@ -256,9 +263,21 @@ int main (int argc, char *argv[])
     return 0;
 }
 
+/*****************************************************************
+ *                      FUNCTION DEFINITIONS
+ *****************************************************************/
 
-/********************* FUNCTION DEFINITIONS *******************/
 
+
+/*************************************************************************
+ * @fn				- acceptConnections
+ *
+ * @brief			- Thread handler: wait & accept new connection
+ * 
+ * @param[in]		- no use
+ *
+ * @return			- none
+ */
 void *acceptConnections(void *args)
 {
     int new_socket_fd;
@@ -301,7 +320,15 @@ void *acceptConnections(void *args)
     }
 }
 
-
+/*************************************************************************
+ * @fn				- connectToPeer
+ *
+ * @brief			- connect to a peer
+ * 
+ * @param[in]		- peer_device: holds information of the peer
+ *
+ * @return			- 0 if success, -1 if failed
+ */
 int connectToPeer(device_t *peer_device)
 {
     /* Initialize & connect to peer device */
@@ -326,6 +353,16 @@ int connectToPeer(device_t *peer_device)
     return 0;
 }
 
+/*************************************************************************
+ * @fn				- sendToPeer
+ *
+ * @brief			- send a message to a peer
+ * 
+ * @param[in]		- peer_id: id of the peer
+ * @param[in]		- mesg: message string
+ *
+ * @return			- 0 if success, -1 if failed
+ */
 int sendToPeer(int peer_id, char *mesg)
 {
     int i;
@@ -349,7 +386,15 @@ int sendToPeer(int peer_id, char *mesg)
     return -1;
 }
 
-
+/*************************************************************************
+ * @fn				- Thread handler: receiveFromPeer
+ *
+ * @brief			- Each connection will have a thread to wait & receive a new message.
+ * 
+ * @param[in]		- args: points to the corresponding peer device structure
+ *
+ * @return			- none
+ */
 void *receiveFromPeer(void *args)
 {
     device_t *peer_device = (device_t *)args;
@@ -401,7 +446,16 @@ void *receiveFromPeer(void *args)
 }
 
 
-
+/*************************************************************************
+ * @fn				- terminatePeer
+ *
+ * @brief			- Terminate a peer on the list by sending a terminate code to it
+ *                  - After the disconnection from the peer, this program will catch & close the peer's socket
+ * 
+ * @param[in]		- peer_id: id of the peer
+ *
+ * @return			- 0 if success, -1 if failed
+ */
 int terminatePeer(int peer_id)
 {
     int i;
@@ -428,6 +482,15 @@ int terminatePeer(int peer_id)
     return -1;
 }
 
+/*************************************************************************
+ * @fn				- updatePeerList
+ *
+ * @brief			- Update the peer list when there is a new connection or disconnection.
+ * 
+ * @param[in]		- peer_id: id of the peer
+ *
+ * @return			- none
+ */
 void updatePeerList(int peer_id)
 {
     int i;
@@ -447,7 +510,17 @@ void updatePeerList(int peer_id)
     total_devices--;
 }
 
-void exitApp()
+
+/*************************************************************************
+ * @fn				- exitApp
+ *
+ * @brief			- Close all the communications & terminate this process
+ * 
+ * @param[in]		- 
+ *
+ * @return			- none
+ */
+void exitApp(void)
 {
     for (int i = 0; i < total_devices; i++)
     {
@@ -461,6 +534,16 @@ void exitApp()
     exit(EXIT_SUCCESS);
 }
 
+
+/*************************************************************************
+ * @fn				- listPeer
+ *
+ * @brief			- list all the peer that connected to this process.
+ * 
+ * @param[in]		- 
+ *
+ * @return			- none
+ */
 void listPeer(void)
 {
     printf("\n********************************************\n");
@@ -475,7 +558,15 @@ void listPeer(void)
     printf("********************************************\n");
 }
 
-
+/*************************************************************************
+ * @fn				- showHelp
+ *
+ * @brief			- show the user interface options 
+ * 
+ * @param[in]		- 
+ *
+ * @return			- none
+ */
 void showHelp(void)
 {
     printf("\n******************************** Chat Application ********************************\n");
@@ -491,6 +582,15 @@ void showHelp(void)
     printf("\n**********************************************************************************\n");
 }
 
+/*************************************************************************
+ * @fn				- showIP
+ *
+ * @brief			- show this computer's IPv4 address
+ * 
+ * @param[in]		- 
+ *
+ * @return			- none
+ */
 void showIP(void)
 {
     char ip_address[16];
@@ -502,6 +602,15 @@ void showIP(void)
     printf("\nIP Address of this app: %s\n", ip_address);
 }
 
+/*************************************************************************
+ * @fn				- showPort
+ *
+ * @brief			- show the port that this process is listening on
+ * 
+ * @param[in]		- 
+ *
+ * @return			- none
+ */
 void showPort(void)
 {
     printf("\nListening port of this app: %d\n", this_device.port_no);
