@@ -34,12 +34,12 @@ typedef struct
 /*****************************************************************
  *                         FUNCTION PROTOTYPES
  *****************************************************************/
-void *acceptConnections(void *args);        /* Thread handler: accept new connection  */
-void *receiveFromPeer(void *args);          /* Thread handler: receive data from peer*/
+void *acceptConnections(void *args);        /* Thread handler: accept a new connection  */
+void *receiveFromPeer(void *args);          /* Thread handler: receive data from a peer*/
 int connectToPeer(device_t *peer_device);   /* Connect to a new peer */
 int sendToPeer(int peer_id, char *mesg);    /* Send a message to a peer */
 int terminatePeer(int peer_id);             /* Terminate a peer */
-void listPeer(void);                        /* List all peers connected to this program */
+void listPeer(void);                        /* List all peers connected to this process */
 void updatePeerList(int peer_id);           /* Helper function: update  the peer list (after create/close a connection)*/
 void showHelp(void);                        /* Show user interface options*/
 void showIP(void);                          /* Show the computer IP address */
@@ -49,10 +49,10 @@ void exitApp(void);                         /* Close all the communications & te
 /*****************************************************************
  *                         GLOBAL VARIABLES
  *****************************************************************/
-device_t this_device = {0};
-device_t peer_device[MAX_CONNECTIONS] = {0};
+device_t this_device = {0};                 /* Struct variable for this device (the process itself) */
+device_t peer_device[MAX_CONNECTIONS] = {0};/* Struct variables for peers connected to this process */
 
-int total_devices = 0;
+int total_devices = 0;                      /* Total devices, which get updated when there is a new connection/disconnection */
 
 pthread_t acceptThread;
 pthread_t receiveThread[MAX_CONNECTIONS];
@@ -131,7 +131,7 @@ int main (int argc, char *argv[])
 
         if (!strcmp(temp_cmd, "connect"))
         {
-            // Connect to a Peer 
+            /* Command: connect to a Peer */ 
             if (total_devices >= MAX_CONNECTIONS)
             {
                 printf("No more rooms for a new connection. Please close a current one.\n");
@@ -181,7 +181,7 @@ int main (int argc, char *argv[])
         }
         else if (!strcmp(temp_cmd, "send"))
         {
-            // Send a message to a peer
+            /* Command: Send a message to a peer */
             int peer_id;
             char peer_id_str[10];
             char *msg;
@@ -208,7 +208,7 @@ int main (int argc, char *argv[])
         }
         else if (!strcmp(temp_cmd, "terminate"))
         {
-            // terminate a peer connection
+            /* Command: terminate a peer connection */
             
             int peer_id;
             sscanf(user_cmd, "%s %d", temp_cmd, &peer_id);
@@ -231,27 +231,27 @@ int main (int argc, char *argv[])
         }
         else if (!strcmp(temp_cmd, "list"))
         {
-            // list all the connection connected to this device
+            /* Command: list all the connection connected to this device */ 
             listPeer();
         }
         else if (!strcmp(temp_cmd, "help"))
         {
-            // show user interface options
+            /* Command: show user interface options */
             showHelp();
         }
         else if (!strcmp(temp_cmd, "myip"))
         {
-            // show this device's IP address
+            /* Command: show this device's IP address */
             showIP();
         }
         else if (!strcmp(temp_cmd, "myport"))
         {
-            // show this device's listening port
+            /* Command: show this device's listening port */
             showPort();
         }
         else if (!strcmp(temp_cmd, "exit"))
         {
-            // close all connections & terminate this process
+            /* Command: close all connections & terminate this process */
             exitApp();
         }
         else
@@ -267,12 +267,10 @@ int main (int argc, char *argv[])
  *                      FUNCTION DEFINITIONS
  *****************************************************************/
 
-
-
 /*************************************************************************
  * @fn				- acceptConnections
  *
- * @brief			- Thread handler: wait & accept new connection
+ * @brief			- Thread handler: wait & accept a new connection
  * 
  * @param[in]		- no use
  *
@@ -297,7 +295,7 @@ void *acceptConnections(void *args)
         int print_port = ntohs(new_addr.sin_port);
         inet_ntop(AF_INET, &new_addr.sin_addr, addr_in_str, 16);
         
-        // Update new connection to the device list
+        // Update new connection to the peer list
         pthread_mutex_lock(&peer_mutex);
 
         peer_device[total_devices].socket_fd = new_socket_fd;
@@ -325,7 +323,7 @@ void *acceptConnections(void *args)
  *
  * @brief			- connect to a peer
  * 
- * @param[in]		- peer_device: holds information of the peer
+ * @param[in]		- peer_device: holds information about the peer
  *
  * @return			- 0 if success, -1 if failed
  */
@@ -409,7 +407,7 @@ void *receiveFromPeer(void *args)
         if (read_bytes <= 0)
         {
             // An error happened - or a peer has closed a connection.
-            printf("\nA peer has left the your chat.\n");
+            printf("\nA peer has left your chat.\n");
 
             pthread_mutex_lock(&peer_mutex);
 
@@ -500,7 +498,7 @@ void updatePeerList(int peer_id)
         {
             peer_device[i] = peer_device[i + 1];
             peer_device[i].id -= 1;
-            printf("ID: %d\n", peer_device[i].id);
+            //printf("ID: %d\n", peer_device[i].id);
         }
     }
     else if (total_devices == 1)
@@ -538,7 +536,7 @@ void exitApp(void)
 /*************************************************************************
  * @fn				- listPeer
  *
- * @brief			- list all the peer that connected to this process.
+ * @brief			- list all the peers that connected to this process.
  * 
  * @param[in]		- 
  *
